@@ -63,10 +63,19 @@ class FlowMIA:
         self.label_col = config["label_col"]
         self.use_wgan = config["use_wgan"]
 
-        self.member = pd.read_csv(config["member_path"])[self.ip_cols + self.numerical_cols + self.categorical_cols + [self.label_col]]
-        self.non_member = pd.read_csv(config["non_member_path"])[self.ip_cols + self.numerical_cols + self.categorical_cols + [self.label_col]]
-        self.synth = pd.read_csv(config["synth_path"])[self.ip_cols + self.numerical_cols + self.categorical_cols + [self.label_col]]
-        self.util_test = pd.read_csv(config["test_path"])[self.ip_cols + self.numerical_cols + self.categorical_cols + [self.label_col]]
+        features = [self.ip_cols, self.numerical_cols, self.categorical_cols,]        
+        if self.label_col is None:
+            features.append([])
+        else:
+            features.append([self.label_col])
+        self.all_features = []
+        for f in features:
+            self.all_features+=f
+
+        self.member = pd.read_csv(config["member_path"])[self.all_features]
+        self.non_member = pd.read_csv(config["non_member_path"])[self.all_features]
+        self.synth = pd.read_csv(config["synth_path"])[self.all_features]
+        self.util_test = pd.read_csv(config["test_path"])[self.all_features]
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
@@ -75,22 +84,26 @@ class FlowMIA:
         # as the generator. IP columns are handled separately (see _transform).
         all_cat = self.categorical_cols 
         all_categories = []
-
         for col in all_cat:
             # pega categorias do REAL (não do synth)
             cats = pd.concat([self.member[col], self.non_member[col]]).unique()
             all_categories.append(sorted(cats))
 
-        self.preprocessor = ColumnTransformer(
-            transformers=[
-                ("num", StandardScaler(), self.numerical_cols),
-                ("cat", OneHotEncoder(
-                    handle_unknown="ignore",
-                    sparse_output=False,
-                    categories=all_categories
-                ), all_cat),
-            ]
-        )
+        # 2. Construir os transformers dinamicamente
+        transformers = []
+        if self.numerical_cols:
+            transformers.append(("num", StandardScaler(),  self.numerical_cols))
+        if all_cat:
+            # Só adicionamos o 'cat' se houver colunas categóricas
+            transformers.append(("cat", OneHotEncoder(
+                handle_unknown="ignore",
+                sparse_output=False,
+                categories=all_categories
+            ), all_cat))
+
+        
+
+        self.preprocessor = ColumnTransformer(transformers=transformers)
         fit_data = pd.concat([self.synth, self.member], axis=0)
         self.preprocessor.fit(fit_data)
 
@@ -150,7 +163,7 @@ class FlowMIA:
             Dictionary of MIA metrics including AUC, accuracy, precision,
             recall, F1, score statistics, and Wasserstein distances.
         """
-        print("Starting FlowMIA-GAN privacy evaluation...")
+        print(f"Starting FlowMIA-GAN privacy evaluation {pre_trained_model}...")
 
         if pre_trained_model:
             self.flowmia_gan.load_model(pre_trained_model)
