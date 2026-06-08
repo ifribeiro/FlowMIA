@@ -1,4 +1,11 @@
+import sys
+import os
+
+# Adiciona a pasta raiz do projeto (onde está a pasta 'src') ao caminho de busca
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+
 from src.flowmia import FlowMIA
+
 config_netshare = {
     'member_path': 'datasets/real/celldata/train.csv', # path dos membros
     'non_member_path': 'datasets/reference/telecom_italia_internet.csv', # path dos não-membros
